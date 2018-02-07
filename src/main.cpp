@@ -9,50 +9,78 @@ using namespace std;
 using namespace boost;
 using namespace boost::program_options;
 
-int arg_int;
-string arg_log_level;
+struct args_struct {
+	int number_;
+	string log_level_;
+};
 
-int parse_args(int argc, char** argv)
+bool check_args(args_struct* args);
+bool parse_args(int argc, char** argv, args_struct* args)
 {
   options_description options("ops");
   options.add_options()
-    ("int,i", value<int>()->default_value(0), "integer")
+    ("number,n", value<int>()->default_value(0), "integer")
     ("log,l", value<string>(), "log level")
+    ("help,h", "show help message")
   ;
   variables_map vm;
   try{
     //parse args
-		if(argc == 2){
+		if(argc == 2 && strcmp(*(argv+1), "-h") && strcmp(*(argv+1), "--help")){
 			ifstream config_file(*(argv+1));
 	    store(parse_config_file(config_file, options), vm);
 		}else{
 	    store(parse_command_line(argc, argv, options), vm);
 		}
+		if(vm.count("help") != 0){
+			BOOST_LOG_TRIVIAL(info) << options;
+			return false;
+		}
     notify(vm);
 
-    if(vm.count("int")){
-      arg_int = vm["int"].as<int>();
-      BOOST_LOG_TRIVIAL(info) << "int:" << arg_int;
+		for (const auto& it : vm) {
+			stringstream ss;
+			ss << it.first.c_str() << " : ";
+			auto& value = it.second.value();
+			if (auto v = boost::any_cast<uint32_t>(&value))
+				ss << *v;
+			else if (auto v = boost::any_cast<std::string>(&value))
+				ss << *v;
+			else if (auto v = boost::any_cast<int>(&value))
+				ss << *v;
+			else
+				ss << "parse error";
+			BOOST_LOG_TRIVIAL(info) << ss.str();
+		}
+
+    if(vm.count("number")){
+      args->number_ = vm["number"].as<int>();
     }
-    if(vm.count("log")){
-      arg_log_level = vm["log"].as<string>();
-      BOOST_LOG_TRIVIAL(info) << "log_level:" << arg_log_level;
+		if(vm.count("log")){
+      args->log_level_ = vm["log"].as<string>();
     }
 
-    if(arg_log_level.empty()){
-      BOOST_LOG_TRIVIAL(info) << "Need --log for log_level";
-      BOOST_LOG_TRIVIAL(info) << options;
-      return 1;
-    }
   }
   catch(std::exception& e){
     BOOST_LOG_TRIVIAL(error) << "error in parsing args:" << e.what();
-    return 1;
+		BOOST_LOG_TRIVIAL(info) << options;
+    return false;
   }
-  return 0;
+  return check_args(args);
 }
+
+bool check_args(args_struct* args)
+{
+	if(args->log_level_.empty()){
+		BOOST_LOG_TRIVIAL(error) << "log_level must be set";
+		return false;
+	}
+	return true;
+}
+
 
 int main(int argc, char** argv)
 {
-	parse_args(argc, argv);
+	args_struct args;
+	bool ret = parse_args(argc, argv, &args);
 }
